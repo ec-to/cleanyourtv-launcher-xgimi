@@ -5,23 +5,17 @@
 diff --git a/launcher/app/build.gradle b/launcher/app/build.gradle
 --- a/launcher/app/build.gradle
 +++ b/launcher/app/build.gradle
-@@ -13,8 +13,8 @@
-         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
-         minSdk 26
+@@ -15,4 +15,4 @@
          targetSdk 34
 -        versionCode 14
 -        versionName '3.5'
 +        versionCode 15
 +        versionName '3.6'
      }
- 
-     buildTypes {
 diff --git a/launcher/app/src/main/res/values/config.xml b/launcher/app/src/main/res/values/config.xml
 --- a/launcher/app/src/main/res/values/config.xml
 +++ b/launcher/app/src/main/res/values/config.xml
-@@ -459,6 +459,14 @@
-          (many China-market TVs, e.g. Coocaa 8R145), a fresh Home with app_library on would otherwise be
-          nearly empty. Empty (off) by default, so existing setups change nothing. -->
+@@ -461,2 +461,10 @@
      <string-array name="library_apps" translatable="false">
 +        <!-- XGIMI GMUI 6 ships a few first-party apps that declare only CATEGORY_LAUNCHER (no leanback entry),
 +             so a leanback-only Home never lists them: 极米投屏 (wirelessscreen), 应用中心 (newappmarket),
