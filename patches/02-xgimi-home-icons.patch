@@ -1,0 +1,34 @@
+# 极米 GMUI6 适配 · 第二步：恢复四个极米应用图标（对应 v3.6 / versionCode 15）
+# 前提：已应用 01-xgimi-entrances.patch
+# 应用：仓库根目录执行  git apply patches/02-xgimi-home-icons.patch
+#
+diff --git a/launcher/app/build.gradle b/launcher/app/build.gradle
+--- a/launcher/app/build.gradle
++++ b/launcher/app/build.gradle
+@@ -13,8 +13,8 @@
+         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
+         minSdk 26
+         targetSdk 34
+-        versionCode 14
+-        versionName '3.5'
++        versionCode 15
++        versionName '3.6'
+     }
+ 
+     buildTypes {
+diff --git a/launcher/app/src/main/res/values/config.xml b/launcher/app/src/main/res/values/config.xml
+--- a/launcher/app/src/main/res/values/config.xml
++++ b/launcher/app/src/main/res/values/config.xml
+@@ -459,6 +459,14 @@
+          (many China-market TVs, e.g. Coocaa 8R145), a fresh Home with app_library on would otherwise be
+          nearly empty. Empty (off) by default, so existing setups change nothing. -->
+     <string-array name="library_apps" translatable="false">
++        <!-- XGIMI GMUI 6 ships a few first-party apps that declare only CATEGORY_LAUNCHER (no leanback entry),
++             so a leanback-only Home never lists them: 极米投屏 (wirelessscreen), 应用中心 (newappmarket),
++             资源管理器 (filemanager), 投影管家 (manager). Pre-seeding them keeps the icons on Home, and they
++             stay removable in the App library UI. Trim to what your model actually ships. -->
++        <item>com.xgimi.wirelessscreen</item>
++        <item>com.xgimi.newappmarket</item>
++        <item>com.xgimi.filemanager</item>
++        <item>com.xgimi.manager</item>
+     </string-array>

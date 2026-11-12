@@ -1,0 +1,252 @@
+# 极米 GMUI6 适配 · 第一步：三大入口修复（对应 v3.5 / versionCode 14）
+# 基线：Gathin23/cleanyourtv (main) 的 launcher/
+# 应用：仓库根目录执行  git apply patches/01-xgimi-entrances.patch
+#
+diff --git a/launcher/app/build.gradle b/launcher/app/build.gradle
+--- a/launcher/app/build.gradle
++++ b/launcher/app/build.gradle
+@@ -13,8 +13,8 @@
+         applicationId providers.gradleProperty('launcherApplicationId').getOrElse('com.gathin.tvhome')
+         minSdk 26
+         targetSdk 34
+-        versionCode 13
+-        versionName '3.4'
++        versionCode 14
++        versionName '3.5'
+     }
+ 
+     buildTypes {
+diff --git a/launcher/app/src/main/AndroidManifest.xml b/launcher/app/src/main/AndroidManifest.xml
+--- a/launcher/app/src/main/AndroidManifest.xml
++++ b/launcher/app/src/main/AndroidManifest.xml
+@@ -65,6 +65,10 @@
+         <package android:name="com.xiaomi.mitv.settings" />
+         <package android:name="com.tcl.settings" />
+         <package android:name="com.amazon.tv.launcher" />
++        <!-- XGIMI: the Settings and Wi-Fi pills open com.android.newsettings' settings service window
++             (settings_service in config.xml), and the Inputs rows open its HDMI player (input_action). -->
++        <package android:name="com.android.newsettings" />
++        <package android:name="com.xgimi.xhplayer" />
+         <!-- Coocaa OS sources for the Inputs menu (coocaa_sources); see CoocaaSources. -->
+         <provider android:authorities="com.skyworth.tv.provider" />
+         <provider android:authorities="com.skyworth.tv.sdk.provider" />
+diff --git a/launcher/app/src/main/res/values/config.xml b/launcher/app/src/main/res/values/config.xml
+--- a/launcher/app/src/main/res/values/config.xml
++++ b/launcher/app/src/main/res/values/config.xml
+@@ -14,6 +14,18 @@
+         <item>com.tcl.settings/com.tcl.settings.ui.MainActivity</item>
+         <item>com.amazon.tv.launcher/com.amazon.tv.launcher.ui.MainSettingsActivity</item>
+     </string-array>
++
++    <!-- Firmware with no settings activity at all, whose pages are floating windows a background service shows
++         over whatever is in front: "package/.Service" plus the action that service expects. XGIMI GMUI 6 sets are
++         one (com.android.newsettings, its SettingService reads the page from the "data" extra), so a
++         settings_fallback_components entry cannot stand in for it - that names an activity, and startActivity
++         cannot reach a service. Used only where nothing answers android.settings.SETTINGS / WIFI_SETTINGS;
++         settings_service_page serves the Settings entries, wifi_service_page the network ones (XGIMI's floating
++         Wi-Fi panel). Empty settings_service: none. The values below are the XGIMI TV / projector ones. -->
++    <string name="settings_service" translatable="false">com.android.newsettings/com.xgimi.newsettings.SettingService</string>
++    <string name="settings_service_action" translatable="false">com.xgimi.settings.SETTINGS</string>
++    <string name="settings_service_page" translatable="false">Settings://com.xgimi.settings/main</string>
++    <string name="wifi_service_page" translatable="false">Settings://com.xgimi.settings.net/wifi_misckey</string>
+ 
+     <!-- Apps pinned to the dock row at the bottom, in this order. Missing apps are skipped. -->
+     <string-array name="dock_apps">
+@@ -118,7 +130,7 @@
+          own source picker instead, started by itself for every row, ahead of the standard way: for firmware that
+          answers the channel URI with "unsupported" (Redmi X65, MiTV-NSOP0:
+          com.xiaomi.mitv.tvplayer/.ExternalSourceActivity opens its HDMI 1 / HDMI 2 / AV overlay). Leave empty to omit. -->
+-    <string name="input_action" translatable="false"></string>
++    <string name="input_action" translatable="false">com.xgimi.action.hdmiPlayer</string>
+     <!-- Inputs menu: a scheme to send the input's passthrough URI with instead of content:// (and no channel MIME
+          type). YaOS: live-tv. Its source player answers live-tv://android.media.tv/passthrough/<input>, while the
+          content:// URI goes to its channel player, which resumes the last film it played. Leave empty to omit. -->
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/SystemSettings.java b/launcher/app/src/main/java/com/gathin/tvhome/SystemSettings.java
+--- a/launcher/app/src/main/java/com/gathin/tvhome/SystemSettings.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/SystemSettings.java
+@@ -58,6 +58,40 @@
+         return null;
+     }
+ 
++    /**
++     * Opens Settings through the vendor's settings <em>service</em> where the firmware has no settings activity
++     * at all, and returns whether the service took the request. XGIMI's GMUI 6 sets are one: com.android.newsettings
++     * has no android.settings.SETTINGS handler, its pages are floating SYSTEM_DIALOG windows a background
++     * SettingService shows over whatever is in front, and the page is named by its "data" extra alone - an Intent
++     * uri is ignored, a startActivity cannot reach a service, and a settings_fallback_components entry cannot
++     * either, since that names an activity. config.xml carries the service, the action it expects, and the page
++     * per entry (settings_service_page, wifi_service_page). Empty settings_service, or a firmware with a settings
++     * activity of its own: false, and the caller keeps its usual route.
++     */
++    static boolean startServicePage(Context context, String standardAction) {
++        ComponentName service = ComponentName.unflattenFromString(context.getString(R.string.settings_service));
++        if (service == null) return false;
++        PackageManager pm = context.getPackageManager();
++        ResolveInfo resolved = pm.resolveActivity(new Intent(standardAction), PackageManager.MATCH_DEFAULT_ONLY);
++        // A firmware that answers the standard action has a settings activity to open; leave that one alone.
++        if (resolved != null && !resolved.activityInfo.name.contains("CTSDummy")) return false;
++        String page = context.getString(Settings.ACTION_WIFI_SETTINGS.equals(standardAction)
++                ? R.string.wifi_service_page : R.string.settings_service_page);
++        if (page.isEmpty()) return false;
++        Intent i = new Intent(context.getString(R.string.settings_service_action)).setComponent(service)
++                .putExtra("data", page)
++                // XGIMI's own launcher sends true with every page (SettingPageManager.startServiceForSetting).
++                .putExtra("unlocked", true)
++                .putExtra("packageName", context.getPackageName());
++        try {
++            return context.startService(i) != null;
++        } catch (RuntimeException e) {
++            // SecurityException where the service is not open to this build; IllegalStateException where Android
++            // refuses a service start from the background (a key helper rather than Home). Fall back either way.
++            return false;
++        }
++    }
++
+     /** The TV's App info page for pkg, or null where the firmware has none (CVTE's settings app, #1202). */
+     static Intent appInfo(Context context, String pkg) {
+         Intent info = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + pkg));
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
+--- a/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/MainActivity.java
+@@ -825,7 +825,7 @@
+         btnWifi.setOnClickListener(v -> openNetworkPill());
+         btnVpn.setOnClickListener(v -> openVpnPill());
+         btnWifi.setOnLongClickListener(v -> {
+-            open(systemIntent(Settings.ACTION_WIFI_SETTINGS));
++            openSettingsEntry(Settings.ACTION_WIFI_SETTINGS);
+             return true;
+         });
+         launcherSettingsButton = cfg.launcherSettingsButton;
+@@ -836,7 +836,7 @@
+         btnSettings.setOnClickListener(v -> {
+             if (launcherSettingsButton) startActivityForResult(
+                     new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST);
+-            else open(systemIntent(Settings.ACTION_SETTINGS));
++            else openSettingsEntry(Settings.ACTION_SETTINGS);
+         });
+         btnReorder = findViewById(R.id.btnReorder);
+         btnReorder.setOnClickListener(v -> toggleReorder());
+@@ -1404,11 +1404,14 @@
+         for (int code : settingsKeycodes) {
+             if (event.getKeyCode() != code) continue;
+             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled()) {
+-                Intent settings = settingsKeyPanel ? new Intent(this, QuickSettingsActivity.class)
+-                        : systemIntent(Settings.ACTION_SETTINGS);
+-                // settings_key_clear_task, as in HomeKeyService: Back from Settings goes Home, not to a vendor page.
+-                if (settingsKeyClearTask && !settingsKeyPanel) settings.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
+-                open(settings);
++                if (settingsKeyPanel) {
++                    Intent panel = new Intent(this, QuickSettingsActivity.class);
++                    // settings_key_clear_task, as in HomeKeyService: Back from Settings goes Home, not to a vendor page.
++                    if (settingsKeyClearTask) panel.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
++                    open(panel);
++                } else {
++                    openSettingsEntry(Settings.ACTION_SETTINGS);
++                }
+             }
+             return true;
+         }
+@@ -3144,7 +3147,8 @@
+      */
+     private void openNetworkPill() {
+         Intent i = vpnPill ? null : vpnAppIntent();
+-        open(i != null ? i : systemIntent(Settings.ACTION_WIFI_SETTINGS));
++        if (i != null) open(i);
++        else openSettingsEntry(Settings.ACTION_WIFI_SETTINGS);
+     }
+ 
+     /** vpn_app's launch intent, or null when none is set or it is not installed. */
+@@ -3205,6 +3209,13 @@
+         btnVpn.setVisibility(View.VISIBLE);
+     }
+ 
++
++    /** Every settings entry shares the standard intent and the vendor fallback (SystemSettings). On firmware whose
++     *  settings is a floating window from a service with no activity to open (XGIMI GMUI 6), the service's page
++     *  comes first - see SystemSettings.startServicePage. */
++    private void openSettingsEntry(String standardAction) {
++        if (!SystemSettings.startServicePage(this, standardAction)) open(systemIntent(standardAction));
++    }
+ 
+     /** Every settings entry shares the standard intent and the vendor fallback (SystemSettings). */
+     private Intent systemIntent(String standardAction) {
+@@ -3701,7 +3712,7 @@
+                     () -> startActivityForResult(new Intent(this, LauncherSettingsActivity.class), LAUNCHER_SETTINGS_REQUEST));
+         } else {
+             addInputRow(rows, popup, R.drawable.ic_settings, getString(R.string.settings), -1,
+-                    () -> open(systemIntent(Settings.ACTION_SETTINGS)));
++                    () -> openSettingsEntry(Settings.ACTION_SETTINGS));
+         }
+         panel.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED);
+         popup.setWidth(Math.max((int) (220 * density), Math.min(panel.getMeasuredWidth(), (int) (360 * density))));
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/RemoteKeys.java b/launcher/app/src/main/java/com/gathin/tvhome/RemoteKeys.java
+--- a/launcher/app/src/main/java/com/gathin/tvhome/RemoteKeys.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/RemoteKeys.java
+@@ -392,10 +392,14 @@
+                 start(ctx, dream);
+                 break;
+             case "settings":
+-                start(ctx, SystemSettings.intent(ctx, Settings.ACTION_SETTINGS));
++                if (!SystemSettings.startServicePage(ctx, Settings.ACTION_SETTINGS)) {
++                    start(ctx, SystemSettings.intent(ctx, Settings.ACTION_SETTINGS));
++                }
+                 break;
+             case "wifi":
+-                start(ctx, SystemSettings.intent(ctx, Settings.ACTION_WIFI_SETTINGS));
++                if (!SystemSettings.startServicePage(ctx, Settings.ACTION_WIFI_SETTINGS)) {
++                    start(ctx, SystemSettings.intent(ctx, Settings.ACTION_WIFI_SETTINGS));
++                }
+                 break;
+             case "library":
+                 // Home with the App library open on top; Home does nothing when app_library is off.
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/HomeKeyService.java b/launcher/app/src/main/java/com/gathin/tvhome/HomeKeyService.java
+--- a/launcher/app/src/main/java/com/gathin/tvhome/HomeKeyService.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/HomeKeyService.java
+@@ -279,15 +279,20 @@
+             RemoteKeys.handle(this, event, null, hold);
+             boolean held = hold != null && event.getEventTime() - event.getDownTime() >= RemoteKeys.HOLD_MS;
+             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled() && !held) {
+-                Intent open = settingsPanel ? new Intent(this, QuickSettingsActivity.class)
+-                        : SystemSettings.intent(this, Settings.ACTION_SETTINGS);
+-                // settings_key_clear_task: on MediaTek boards KEYCODE_SETTINGS is also a global key that opens Display &
+-                // Sound in the Settings task before this helper sees it; cleared, Back from Settings goes Home, not there.
+-                if (settingsClearTask && !settingsPanel) open.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
+-                try {
+-                    startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+-                } catch (ActivityNotFoundException | SecurityException unavailable) {
+-                    Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
++                if (settingsPanel) {
++                    startActivity(new Intent(this, QuickSettingsActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
++                } else if (!SystemSettings.startServicePage(this, Settings.ACTION_SETTINGS)) {
++                    // XGIMI GMUI 6 has no settings activity at all: its page is a service window, and the
++                    // helper above opens that one (SystemSettings.startServicePage).
++                    Intent open = SystemSettings.intent(this, Settings.ACTION_SETTINGS);
++                    // settings_key_clear_task: on MediaTek boards KEYCODE_SETTINGS is also a global key that opens Display &
++                    // Sound in the Settings task before this helper sees it; cleared, Back from Settings goes Home, not there.
++                    if (settingsClearTask) open.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
++                    try {
++                        startActivity(open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
++                    } catch (ActivityNotFoundException | SecurityException unavailable) {
++                        Toast.makeText(this, R.string.not_available, Toast.LENGTH_SHORT).show();
++                    }
+                 }
+             }
+             return true;
+diff --git a/launcher/app/src/main/java/com/gathin/tvhome/LauncherSettingsActivity.java b/launcher/app/src/main/java/com/gathin/tvhome/LauncherSettingsActivity.java
+--- a/launcher/app/src/main/java/com/gathin/tvhome/LauncherSettingsActivity.java
++++ b/launcher/app/src/main/java/com/gathin/tvhome/LauncherSettingsActivity.java
+@@ -170,8 +170,12 @@
+         });
+         findViewById(R.id.defaultHomeChoice).setOnClickListener(v ->
+                 open(new Intent(this, HomeSettingsActivity.class)));
+-        findViewById(R.id.tvSettingsChoice).setOnClickListener(v ->
+-                open(SystemSettings.intent(this, Settings.ACTION_SETTINGS)));
++        findViewById(R.id.tvSettingsChoice).setOnClickListener(v -> {
++            // XGIMI GMUI 6: the settings entry is a service window with no activity to open.
++            if (!SystemSettings.startServicePage(this, Settings.ACTION_SETTINGS)) {
++                open(SystemSettings.intent(this, Settings.ACTION_SETTINGS));
++            }
++        });
+         refresh();
+         if (config.launcherSettingsButton) reorderChoice.requestFocus();
+         else columnChoices[Math.max(0, Math.min(columns - 4, 3))].requestFocus();
