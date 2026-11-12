@@ -1,0 +1,61 @@
+name: sync-upstream-launcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-upstream-launcher.yml'
+      - 'patches/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Import upstream launcher source and apply XGIMI patches
+        run: |
+          set -euo pipefail
+          if [ -f launcher/app/build.gradle ]; then
+            echo "launcher/ already present - nothing to do"
+            exit 0
+          fi
+          curl -feL https://github.com/Gathin23/cleanyourtv/archive/refs/heads/main.zip -o /tmp/upstream.zip
+          unzip -q /tmp/upstream.zip -d /tmp/upstream
+          test -d /tmp/upstream/cleanyourtv-main/launcher
+          cp -r /tmp/upstream/cleanyourtv-main/launcher ./launcher
+          rm -rf launcher/.gradle launcher/local.properties launcher/app/build
+          for p in patches/01-xgimi-entrances.patch patches/02-xgimi-home-icons.patch; do
+            echo "-- applying $p"
+            git apply --check "$p" || {
+              echo "git apply --check failed, falling back to patch -p1 with fuzz";
+            }
+            if git apply --check "$p" 2>/dev/null; then
+              git apply "$p"
+            else
+              patch -p1 -l -F3 -N --no-backup-if-mismatch < "$p"
+            fi
+          done
+          echo "-- resulting version block:"
+          sed -n '1,25p' launcher/app/build.gradle
+          echo "-- library_apps block:"
+          grep -n -A14 'string-array name="library_apps"' launcher/app/src/main/res/values/config.xml | head -40
+          rm -rf patches.
+
+      - name: Commit the imported source
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "import: upstream launcher source with XGIMI GMUI 6 patches (v3.6 / versionCode 15)"
+          git push origin HEAD:main
