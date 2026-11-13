@@ -4,6 +4,8 @@
 理论上适配于GMUI6系统，测试在GMUI 6.17上正常运行。
 安装后通过adb停用原有**极米桌面（com.xgimi.home）** 方可替换为第三方桌面。
 
+> 在GMUI6上极米隐藏了开发者调试功能，可通过[z7x-adb](https://github.com/code-ant/z7x-adb)项目，通过应用更改系统设置来开启adb调试。可前往项目[Release 下载](https://github.com/code-ant/z7x-adb/releases/latest)
+
 解决的问题：
 
 1. **输入源 / Wi-Fi / 设置 三个胶囊点了没反应** —— 此固件的 `android.settings.SETTINGS` / `WIFI_SETTINGS` 无人应答，设置和 Wi-Fi 实际是厂商系统应用弹出的浮窗，不是 Activity。
