@@ -1,6 +1,8 @@
 # cleanyourtv-launcher-xgimi
 
-[CleanYourTV](https://github.com/Gathin23/cleanyourtv) 启动器在 **XGIMI 极米电视 / 极米投影仪（GMUI 6 · Android 12）** 上的适配补丁集。
+[CleanYourTV](https://github.com/Gathin23/cleanyourtv) 启动器在 **XGIMI 极米Z6x Pro投影仪** 上的适配补丁集。
+理论上适配于GMUI6系统，测试在GMUI 6.17上正常运行。
+安装后通过adb停用原有**极米桌面（com.xgimi.home）** 方可替换为第三方桌面。
 
 解决的问题：
 
